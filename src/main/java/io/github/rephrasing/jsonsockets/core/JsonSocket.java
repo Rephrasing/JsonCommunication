@@ -27,4 +27,7 @@ public interface JsonSocket {
      */
     Gson getGson();
 
+    void onConnection();
+    void onDisconnection();
+
 }

@@ -23,12 +23,14 @@ public abstract class JsonClientSocket implements JsonSocket {
     private Socket socket;
     private SocketThread clientThread;
 
+    private final int setSoTimeoutMillis;
+
     public JsonClientSocket(String address, int port, int setSoTimeout, TimeUnit timeUnit, boolean standaloneThread) {
         this.address = address;
         this.port = port;
         this.standaloneThread = standaloneThread;
-        int setSoTimeoutMillis = (int) timeUnit.toMillis(setSoTimeout);
-        if (standaloneThread) this.clientThread = new SocketThread(() -> this.attemptConnectionBlocking(setSoTimeoutMillis));
+        this.setSoTimeoutMillis = (int) timeUnit.toMillis(setSoTimeout);
+        if (standaloneThread) this.clientThread = new SocketThread(this::attemptConnectionBlocking);
     }
 
     @Override
@@ -64,19 +66,16 @@ public abstract class JsonClientSocket implements JsonSocket {
 
     /**
      * Attempts to connect to a server
-     * @param setSoTimeout The Timeout which the connection should wait without receiving any data through {@link #onReceive(JsonElement)}
-     * @param timeUnit The {@link TimeUnit} of {@literal setSoTimeout}
      * @apiNote Connecting to a server is BLOCKING if not executed in its standalone thread (is set in constructor)
      */
     @CheckReturnValue
-    public Optional<Exception> attemptConnection(int setSoTimeout, TimeUnit timeUnit) {
-        int setSoTimeoutMillis = (int) timeUnit.toMillis(setSoTimeout);
+    public Optional<Exception> attemptConnection() {
         if (standaloneThread) {
-            this.clientThread = new SocketThread(() -> this.attemptConnectionBlocking(setSoTimeoutMillis));
+            this.clientThread = new SocketThread(this::attemptConnectionBlocking);
             clientThread.start();
             return clientThread.getThrownException();
         }
-        return Optional.ofNullable(this.attemptConnectionBlocking(setSoTimeoutMillis));
+        return Optional.ofNullable(this.attemptConnectionBlocking());
     }
 
     /**
@@ -89,6 +88,7 @@ public abstract class JsonClientSocket implements JsonSocket {
         }
         try {
             socket.close();
+            onDisconnection();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -105,10 +105,10 @@ public abstract class JsonClientSocket implements JsonSocket {
         }
     }
 
-    private Exception attemptConnectionBlocking(int setSoTimeout) {
+    private Exception attemptConnectionBlocking() {
         try  {
             this.socket = new Socket(address, port);
-            socket.setSoTimeout(setSoTimeout);
+            socket.setSoTimeout(this.setSoTimeoutMillis);
             System.out.println("Connected to server " + socket.getInetAddress().getHostAddress() + ":" + socket.getPort());
             DataInputStream in = new DataInputStream(socket.getInputStream());
             while (!socket.isClosed()) {
@@ -116,6 +116,7 @@ public abstract class JsonClientSocket implements JsonSocket {
                 if (cmd.isEmpty()) continue; //empty line was sent
                 this.onReceive(getGson().fromJson(cmd, JsonElement.class));
             }
+            onConnection();
             return null;
         } catch (Exception e) {
             return e;

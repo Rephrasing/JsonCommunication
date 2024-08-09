@@ -93,6 +93,7 @@ public abstract class JsonServerSocket implements JsonSocket {
         try {
             this.connection.close();
             this.socket.close();
+            onDisconnection();
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -131,7 +132,7 @@ public abstract class JsonServerSocket implements JsonSocket {
                 if (cmd.isEmpty()) continue;
                 this.onReceive(getGson().fromJson(cmd, JsonElement.class));
             }
-
+            onConnection();
             return null;
         } catch (Exception e) {
             return e;
