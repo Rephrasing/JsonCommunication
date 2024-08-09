@@ -111,12 +111,12 @@ public abstract class JsonClientSocket implements JsonSocket {
             socket.setSoTimeout(this.setSoTimeoutMillis);
             System.out.println("Connected to server " + socket.getInetAddress().getHostAddress() + ":" + socket.getPort());
             DataInputStream in = new DataInputStream(socket.getInputStream());
+            onConnection();
             while (!socket.isClosed()) {
                 String cmd = in.readUTF();
                 if (cmd.isEmpty()) continue; //empty line was sent
                 this.onReceive(getGson().fromJson(cmd, JsonElement.class));
             }
-            onConnection();
             return null;
         } catch (Exception e) {
             return e;

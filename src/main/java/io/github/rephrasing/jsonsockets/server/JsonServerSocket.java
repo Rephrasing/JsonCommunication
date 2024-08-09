@@ -125,14 +125,13 @@ public abstract class JsonServerSocket implements JsonSocket {
             System.out.println("Listening on port " + socket.getLocalPort());
             this.connection = this.socket.accept();
             System.out.println("Connected by client " + connection.getInetAddress().getHostAddress() + ":" + connection.getPort());
-
+            onConnection();
             DataInputStream in = new DataInputStream(connection.getInputStream());
             while (!connection.isClosed()) {
                 String cmd = in.readUTF();
                 if (cmd.isEmpty()) continue;
                 this.onReceive(getGson().fromJson(cmd, JsonElement.class));
             }
-            onConnection();
             return null;
         } catch (Exception e) {
             return e;
