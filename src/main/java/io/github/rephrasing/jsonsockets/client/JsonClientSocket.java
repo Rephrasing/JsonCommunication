@@ -18,49 +18,40 @@ public abstract class JsonClientSocket implements JsonSocket {
 
     private final String address;
     private final int port;
-    private final boolean standaloneThread;
 
     private Socket socket;
-    private SocketThread clientThread;
+    private SocketThread readingThread;
 
     private final int setSoTimeoutMillis;
+    private Thread sendingThread;
 
-    public JsonClientSocket(String address, int port, int setSoTimeout, TimeUnit timeUnit, boolean standaloneThread) {
+    public JsonClientSocket(String address, int port, int setSoTimeout, TimeUnit timeUnit) {
         this.address = address;
         this.port = port;
-        this.standaloneThread = standaloneThread;
         this.setSoTimeoutMillis = (int) timeUnit.toMillis(setSoTimeout);
-        if (standaloneThread) this.clientThread = new SocketThread(this::attemptConnectionBlocking);
+        this.readingThread = new SocketThread(this::attemptConnectionBlocking);
     }
 
     @Override
-    public Optional<SocketThread> getStandaloneThread() {
-        return Optional.ofNullable(clientThread);
+    public Thread getThread() {
+        return readingThread;
     }
 
-    @Override
-    public boolean isStandalone() {
-        return standaloneThread;
-    }
 
     public abstract void onReceive(JsonElement message);
 
     /**
      * Sends a message to the server
      * @param message the json message
-     * @param inNewThread whether the message should be sent in a new thread or not
      * @return true if the message was sent, false otherwise
      * @apiNote Sending messages is BLOCKING if not executed in its own thread
      */
-    public boolean sendMessage(JsonElement message, boolean inNewThread) {
+    public boolean sendMessage(JsonElement message) {
         if (!socket.isConnected()) {
             return false;
         }
-        if (inNewThread) {
-            new Thread(() -> sendMessageBlocking(message)).start();
-        } else {
-            sendMessageBlocking(message);
-        }
+        this.sendingThread = new Thread(() -> sendMessageBlocking(message));
+        sendingThread.start();
         return true;
     }
 
@@ -70,29 +61,36 @@ public abstract class JsonClientSocket implements JsonSocket {
      */
     @CheckReturnValue
     public Optional<Exception> attemptConnection() {
-        if (standaloneThread) {
-            this.clientThread = new SocketThread(this::attemptConnectionBlocking);
-            clientThread.start();
-            return clientThread.getThrownException();
-        }
-        return Optional.ofNullable(this.attemptConnectionBlocking());
+        this.readingThread = new SocketThread(this::attemptConnectionBlocking);
+        readingThread.start();
+        return readingThread.getThrownException();
     }
 
     /**
      * Disconnects from the server
      * @return true if disconnected, false otherwise
      */
-    public boolean disconnect() {
+    private void disconnect() {
         if (socket.isClosed()) {
-            return false;
+            return;
         }
-        try {
-            socket.close();
-            onDisconnection();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return true;
+        new Thread(()-> {
+            if (sendingThread != null) {
+                while (sendingThread.isAlive()) {
+                    try {
+                        Thread.sleep(30);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+            try {
+                socket.close();
+                onDisconnection();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     private void sendMessageBlocking(JsonElement message) {

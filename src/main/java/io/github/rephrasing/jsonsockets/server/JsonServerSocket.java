@@ -17,13 +17,13 @@ import java.util.concurrent.TimeUnit;
  */
 public abstract class JsonServerSocket implements JsonSocket {
 
-    private final boolean standaloneThread;
-
     private SocketThread serverThread;
     private ServerSocket socket;
     private Socket connection;
 
-    public JsonServerSocket(int port, Integer backlog, InetAddress address, Integer setSoTimeOut, TimeUnit timeoutTimeUnit, boolean standaloneThread) {
+    private Thread sendingThread;
+
+    public JsonServerSocket(int port, Integer backlog, InetAddress address, Integer setSoTimeOut, TimeUnit timeoutTimeUnit) {
         if (backlog == null) {
             backlog = 50;
         }
@@ -42,8 +42,7 @@ public abstract class JsonServerSocket implements JsonSocket {
         } catch (Exception e) {
             e.printStackTrace();
         }
-        this.standaloneThread = standaloneThread;
-        if (standaloneThread)this.serverThread = new SocketThread(this::bindPortAndListenBlocking);
+        this.serverThread = new SocketThread(this::bindPortAndListenBlocking);
     }
 
     public abstract void onReceive(JsonElement message);
@@ -55,15 +54,12 @@ public abstract class JsonServerSocket implements JsonSocket {
      * @apiNote Sending a message is BLOCKING if not run in a new thread
      * @return true if the message was sent, false otherwise
      */
-    public boolean sendMessage(JsonElement message, boolean inNewThread) {
-        if (!connection.isConnected()) {
+    public boolean sendMessage(JsonElement message) {
+        if (!socket.isBound()) {
             return false;
         }
-        if (inNewThread) {
-            new Thread(()-> sendMessageBlocking(message)).start();
-        } else {
-            sendMessageBlocking(message);
-        }
+        this.sendingThread = new Thread(() -> sendMessageBlocking(message));
+        sendingThread.start();
         return true;
     }
 
@@ -72,43 +68,42 @@ public abstract class JsonServerSocket implements JsonSocket {
      * @apiNote Listening is BLOCKING if not run in a standalone thread. (is set in constructor)
      */
     public void bindPortAndListen() {
-        if (isStandalone()) {
-            serverThread.start();
-        } else {
-            Exception e = bindPortAndListenBlocking();
-            if (e != null) {
-                e.printStackTrace();
-            }
-        }
+        serverThread.start();
     }
 
     /**
      * Disconnects the bound server port
      * @return {@link Boolean} true if a bound port was disconnected, false otherwise
      */
-    public boolean disconnect() {
+    public void disconnect() {
         if (!socket.isBound()) {
-            return false;
+            return;
         }
-        try {
-            this.connection.close();
-            this.socket.close();
-            onDisconnection();
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-        return true;
+        new Thread(()-> {
+            if (sendingThread != null) {
+                while (sendingThread.isAlive()) {
+                    try {
+                        Thread.sleep(30);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
+            }
+            try {
+                this.connection.close();
+                this.socket.close();
+                onDisconnection();
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }).start();
     }
 
     @Override
-    public Optional<SocketThread> getStandaloneThread() {
-        return Optional.ofNullable(serverThread);
+    public Thread getThread() {
+        return serverThread;
     }
 
-    @Override
-    public boolean isStandalone() {
-        return standaloneThread;
-    }
 
     private void sendMessageBlocking(JsonElement message) {
         try {
