@@ -6,7 +6,7 @@ import java.util.function.Supplier;
 public class SocketThread extends Thread {
 
     private final Supplier<Exception> function;
-    private Optional<Exception> exception;
+    private Exception exception;
 
     public SocketThread(Supplier<Exception> function) {
         this.function = function;
@@ -14,10 +14,10 @@ public class SocketThread extends Thread {
 
     @Override
     public void run() {
-        exception = Optional.ofNullable(function.get());
+        exception = function.get();
     }
 
     public Optional<Exception> getThrownException() {
-        return exception;
+        return Optional.ofNullable(exception);
     }
 }

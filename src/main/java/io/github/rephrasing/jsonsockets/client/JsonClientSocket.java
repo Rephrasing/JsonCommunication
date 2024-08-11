@@ -57,7 +57,7 @@ public abstract class JsonClientSocket implements JsonSocket {
             return false;
         }
         if (inNewThread) {
-            new Thread(()-> sendMessageBlocking(message)).start();
+            new Thread(() -> sendMessageBlocking(message)).start();
         } else {
             sendMessageBlocking(message);
         }
