@@ -70,7 +70,7 @@ public abstract class JsonClientSocket implements JsonSocket {
      * Disconnects from the server
      * @return true if disconnected, false otherwise
      */
-    private void disconnect() {
+    public void disconnect() {
         if (socket.isClosed()) {
             return;
         }
